@@ -16,6 +16,8 @@ Ultimate goal is to replace the following plugins and combine them into knife-cs
 - https://github.com/CloudStack-extras/knife-cloudstack
 - https://github.com/fifthecho/knife-cloudstack-fog
 
+While leveraging and extending the knife-cloud gem for common tasks provided by Chef (https://github.com/opscode/knife-cloud)
+
 ## Installation
 
 Add this line to your application's Gemfile:
