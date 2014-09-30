@@ -20,7 +20,7 @@ require 'chef/knife/cs_base'
 
 class Chef
   class Knife
-    class CsServerList < Knife
+    class CsServerList < Chef::Knife
 
       include Chef::Knife::CsBase
 
@@ -38,33 +38,78 @@ class Chef
              :long => "--tags TAG1,TAG2",
              :description => "List of tags to output"
 
+      def run
+        $stdout.sync = true
+
+        validate!
+
+        server_list = [
+          (config[:id] ? ui.color('ID', :bold) : ui.color('Name', :bold)),
+          ui.color('Public IP', :bold),
+          ui.color('Private IP', :bold),
+          ui.color('Service', :bold),
+          ui.color('Image', :bold),
+          ui.color('Zone', :bold),
+          ui.color('State', :bold)
+        ].flatten.compact
+
+        output_column_count = server_list.length
+
+        rules = connection.list_port_forwarding_rules
+
+        connection.servers.all.each do |server|
+
+          config[:id] ? server_list << server.id.to_s : server_list << server.name.to_s
+
+          server_list << get_public_ip_address(server, rules).to_s
+          server_list << get_private_ip_address(server).to_s
+
+          if config[:id]
+            server_list << server.flavor_id.to_s
+            server_list << server.image_id.to_s
+            server_list << server.zone_id.to_s
+          else
+            flavor = server.flavor_name.to_s
+            server_list << ui.color(flavor, fcolor(flavor))
+            server_list << server.image_name.to_s
+            server_list << server.zone_name.to_s
+          end
+
+          state = server.state.to_s.downcase
+          server_list << ui.color(state, scolor(state))
+        end
+
+        puts ui.list(server_list, :uneven_columns_across, output_column_count)
+
+      end    
+
+      private
+ 
       def fcolor(flavor)
         case flavor
           when /.*micro.*/i
-            fcolor = :blue
+            :blue
           when /.*small.*/i
-            fcolor = :magenta
+            :magenta
           when /.*medium.*/i
-            fcolor = :cyan
+            :cyan
           when /.*large.*/i
-            fcolor = :green
+            :green
           when /.*xlarge.*/i
-            fcolor = :red
+            :red
         end
       end
 
-      def azcolor(az)
-        case az
-          when /a$/
-            color = :blue
-          when /b$/
-            color = :green
-          when /c$/
-            color = :red
-          when /d$/
-            color = :magenta
+      def scolor(state)
+        case state
+          when /destroyed/i, /expunging/i
+            :purple
+          when /shutting-down/i, /terminated/i, /stopping/i, /stopped/i
+            :red
+          when /pending/i
+            :yellow
           else
-            color = :cyan
+           :green
         end
       end
 
@@ -84,68 +129,27 @@ class Chef
         end
       end
 
-      def private_ip_address(server)
+      def get_private_ip_address(server)
         return nil if server.nics.empty?
         default_nic = server.nics.select {|n| n['isdefault'] == true }.first
         return nil if default_nic.nil? || default_nic.empty?
         default_nic['ipaddress']
       end
-
-
-      def run
-        $stdout.sync = true
-
-        validate!
-
-        server_list = [
-
-            if config[:id]
-              ui.color('ID', :bold)
-            else
-              ui.color('Name', :bold)
-            end,
-
-            ui.color('Public IP', :bold),
-            ui.color('Private IP', :bold),
-
-            ui.color('Service', :bold),
-            ui.color('Image', :bold),
-            ui.color('Zone', :bold),
-            ui.color('State', :bold)
-
-        ].flatten.compact
-
-        output_column_count = server_list.length
-
-        connection.servers.all.each do |server|
-
-          config[:id] ? server_list << server.id.to_s : server_list << server.name.to_s
-
-          # Still need to fix the public IP's (need to call the API for all forwards and filter on ssh/winrm sessions or something)
-          server_list << "pub_ip" # public_ip_address(server).to_s || "unknown"
-          server_list << private_ip_address(server).to_s || "unknown"
-
-          config[:id] ? server_list << server.flavor_id.to_s : server_list << server.flavor_name.to_s
-          config[:id] ? server_list << server.image_id.to_s : server_list << server.image_name.to_s
-          config[:id] ? server_list << server.zone_id.to_s : server_list << server.zone_name.to_s
-
-          server_list << begin
-            state = server.state.to_s.downcase
-            case state
-              when 'destroyed', 'expunging'
-                ui.color(state, :purple)
-              when 'shutting-down','terminated','stopping','stopped'
-                ui.color(state, :red)
-              when 'pending'
-                ui.color(state, :yellow)
-              else
-                ui.color(state, :green)
-            end
-          end
+ 
+      def check_ssh_or_winrm_port(server)
+        return false unless server['protocol'] == 'tcp'
+        [ '22', '5985', '5986' ].each do |port|
+          return true if server['privateport'] <= port && server['privateendport'] >= port 
         end
+        false
+      end
 
-        puts ui.list(server_list, :uneven_columns_across, output_column_count)
-
+      def get_public_ip_address(server, rules=nil)
+        return nil if rules.nil?
+        return nil unless rules.key?('listportforwardingrulesresponse') || rules['listportforwardingrulesresponse'].key?('portforwardingrule')
+        f = rules['listportforwardingrulesresponse']['portforwardingrule'].select { |n| n['virtualmachineid'] == server.id && check_ssh_or_winrm_port(n) }.first
+        return nil if f.nil? || f.empty?
+        f['ipaddress'].to_s
       end
     end
   end

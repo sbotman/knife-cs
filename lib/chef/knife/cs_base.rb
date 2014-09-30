@@ -54,7 +54,6 @@ class Chef
         end
       end
 
-
       def connection
         @connection ||= begin
           cloudstack_uri =  URI.parse(Chef::Config[:knife][:cloudstack_url])
