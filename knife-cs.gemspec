@@ -10,7 +10,7 @@ Gem::Specification.new do |spec|
   spec.email         = ["sbotman@schubergphilis.com"]
   spec.summary       = %q{CloudStack Support for Chef's Knife Command}
   spec.description   = %q{CloudStack Support for Chef's Knife Command using knife-cloud}
-  spec.homepage      = ""
+  spec.homepage      = "https://github.com/sbotman/knife-cs"
   spec.license       = "Apache 2.0"
 
   spec.files         = `git ls-files -z`.split("\x0")
